@@ -28,19 +28,29 @@ def read_files(file_name):
         Tag the Key Dictionary with the Key List
         Tag the Base Dictionary with the Base List
     '''
-     try:
-                root = html.fromstring(htmlStr)
+
+    fileName = file_name
+    fileName = fileName.strip()
+
+    f = open(fileName)
+    content = f.read()
+
+    # if fileName.endswith([".html", ".htm", "xhtml", "jhtml"]):
+    	try:
+        	root = html.fromstring(content)
 
             except Exception as e:
                 print "Parse Error occured"
-                continue
+
 
             try:
                 
                 ignore = html.tostring(root, encoding='unicode')
 
-            except UnicodeDecodeError:
-                root = html.soupparser.fromstring(htmlStr)
+            except (Exception, UnicodeDecodeError) as e:
+                root = html.soupparser.fromstring(content)
+
+            
      
 
 def Key_Indexer(content):
@@ -73,7 +83,7 @@ def Inverted_Indexer(Key_List,Base_List):
     '''
     Form the Inverted Index for the Key_List and the Base_List
     '''
-def Statistics:
+def Statistics():
 
     '''
     For Analytics
