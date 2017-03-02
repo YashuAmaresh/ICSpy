@@ -8,6 +8,7 @@ import nltk, re, pprint
 from bs4 import BeautifulSoup
 from nltk import word_tokenize
 path = "WEBPAGES_RAW"
+bad_count=0
 
 def isValid(url):
     global bad_count 
