@@ -6,9 +6,16 @@ from bs4 import BeautifulSoup
 from lxml.html import soupparser
 import nltk, re, pprint
 from bs4 import BeautifulSoup
-from nltk import word_tokenize
+import magic
+from nltk import word_tokenize          
+from nltk.stem.porter import PorterStemmer
+
 path = "WEBPAGES_RAW"
 bad_count=0
+file_handle_list = list()
+curr_file_count = 0
+index_dict = dict()
+curr_url_count = 0
 
 def isValid(url):
     global bad_count 
@@ -37,7 +44,7 @@ def isValid(url):
     except TypeError:
         print "Error"
 
-def crawl_files:
+def crawl_files():
     ''' Crawl the Files domain and retrieve the information from each file.
         Classify the file type and call the Read_file
         Call the Inverted_Indexer
@@ -48,9 +55,9 @@ def crawl_files:
             for filename in os.listdir(path+"/"+pathname):
                 url ="//"+ data[pathname+'/'+filename]
                 if(isValid(url)):
-                    read_files(path+'/'+pathname+'/'+filename)
+                    process_files(path+'/'+pathname+'/'+filename)
 
-def read_files(file_name):
+def process_files(file_name):
     
     ''' Read the files based on the file type .
         Parse and Process the HTML files here
@@ -59,19 +66,80 @@ def read_files(file_name):
         Tag the Key Dictionary with the Key List
         Tag the Base Dictionary with the Base List
     '''
-     try:
-                root = html.fromstring(htmlStr)
 
-            except Exception as e:
-                print "Parse Error occured"
-                continue
+    fileName = file_name
+    fileName = fileName.strip()
 
-            try:
+    f = open(fileName)
+    type_of_content = magic.from_file(fileName)
+    content = f.read()
+
+    # if fileName.endswith([".html", ".htm", "xhtml", "jhtml", "txt"]):
+    if type_of_content.strip().startswith('ASCII text'):	#Text Data
+    	tokens = tokenizeText(content)
+
+    else: #HTML data	
+    	try:
+        	root = BeautifulSoup(content)
+
+		except (Exception, UnicodeDecodeError) as e:
+			print e
+			return
+
+		for script in root(["script", "style"]):
+    		script.extract()    #extract these unnecessary tags
+
+    	text = root.get_text()
+
+		# break into lines and remove leading and trailing space on each
+		lines = (line.strip() for line in text.splitlines())
+		# break multi-headlines into a line each
+		chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+		# drop blank lines
+		text = '\n'.join(chunk for chunk in chunks if chunk)
+
+		print(text)
+
+
+		#If no exception occured:
+		tokens = tokenizeText(text)
+		fancyTokens = tokenizeHTML(root)
+
+	index_tokens(tokens, docID)
+
+	f.close()
+
+
+
+
+
+
+def tokenizeText(content):
+	'''Tokenize text by removing punctuations '''
+	stemmer = PorterStemmer()
+
+	processed_tokens = list()
+	if content and content.strip():
+		content = content.strip()
+		lines = content.split('\n')
+		lines = [line.strip() for line in lines]
+
+		for line in lines:
+			text = "".join([ch for ch in text if ch not in string.punctuation])
+			tokens = nltk.word_tokenize(text)
+			stems = stem_tokens(tokens, stemmer)
+			processed_tokens.extend(stems)
+
+	return processed_tokens
+
+
+def tokenizeHTML(root):
+	pass
                 
-                ignore = html.tostring(root, encoding='unicode')
 
-            except UnicodeDecodeError:
-                root = html.soupparser.fromstring(htmlStr)
+
+
+            
      
 
 def Key_Indexer(content):
@@ -104,8 +172,103 @@ def Inverted_Indexer(Key_List,Base_List):
     '''
     Form the Inverted Index for the Key_List and the Base_List
     '''
-def Statistics:
+def Statistics():
 
     '''
     For Analytics
     '''
+
+
+def create_Index():
+	file_name = "index_head"
+	try:
+    	os.remove(filename)
+	except OSError:
+    	pass
+	f = open(filename, 'a')
+
+	create_letter_index()
+
+	crawl_files(f)
+
+
+
+def create_letter_index():
+	letters = string.ascii_uppercase
+	letter_file_map = map(lambda x: "index_" + x, list(letters))
+
+	for name in letter_file_map:
+		try:
+    		os.remove(filename)
+		except OSError:
+    		pass
+		f = open(filename, 'a').close()
+
+	f = open("index_NUM", 'a').close()
+
+
+def open_letter_index():
+	global file_handle_list
+
+	letters = string.ascii_uppercase
+	letter_file_map = map(lambda x: "index_" + x, list(letters))
+
+	
+	for name in letter_file_map:
+		file_handle = open(name, 'a')
+		file_handle_list.append(file_handle)
+
+	file_handle_list.append(open("index_NUM", 'a')) #Index File for numbers
+
+
+def close_letter_index():
+	global file_handle_list
+
+	for handle in file_handle_list:
+		handle.close()
+
+
+
+def index_tokens(tokens, doc_ID):
+'''Index Token list by adding them to the dictionary. Also, write the tokens to file when each set of 5000 files are processed.'''
+	global curr_file_count
+	global index_dict
+	global curr_url_count 
+
+	curr_url_count += 1
+
+	if curr_url_count % 5000 == 0:
+		#close curr_file by writing contents of the dict to the file and open new file
+		#add values to the dictionary
+
+		curr_file_count += 1
+		fileName = "index_file_" + str(curr_file_count)
+
+		f = open(fileName, 'w')
+		# f.write(str(len(index_dict)) + '\n') #1st line of the file is the number of entries in the file
+		for word in sorted(index_dict): 
+			json.dump([word, len(word), index_dict[word]], f)
+			f.write("\n")
+
+		f.close()
+
+		index_dict = dict()
+
+
+	for token in tokens:
+		word_chain = index_dict.get(token, dict())
+		word_chain[doc_ID] = word_chain.get(doc_ID, 0) + 1
+
+
+
+
+
+def write_index_to_file():
+	pass
+
+def merge_indexes():
+	pass
+
+
+
+
