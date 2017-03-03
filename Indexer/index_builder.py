@@ -2,6 +2,8 @@ from __future__ import division
 import os
 import feedparser
 import string
+import json
+from urlparse import urlparse
 from bs4 import BeautifulSoup
 from lxml.html import soupparser
 import nltk, re, pprint
@@ -17,6 +19,7 @@ curr_file_count = 0
 index_dict = dict()
 curr_url_count = 0
 file_handle_map = dict()
+
 
 def isValid(url):
     global bad_count 
@@ -67,7 +70,7 @@ def process_files(file_name):
         Tag the Key Dictionary with the Key List
         Tag the Base Dictionary with the Base List
     '''
-
+    print file_name
     fileName = file_name
     fileName = fileName.strip()
 
@@ -76,54 +79,55 @@ def process_files(file_name):
     content = f.read()
 
     # if fileName.endswith([".html", ".htm", "xhtml", "jhtml", "txt"]):
-    if type_of_content.strip().startswith('text'):	#Parseable Data
-    	if type_of_content.strip() in ['text/html', 'text/xml']: #HTML data
-    		try:
-        		root = BeautifulSoup(content)
+    if type_of_content.strip().startswith('text') or type_of_content.strip().startswith('application') :	#Parseable Data
+    	if type_of_content.strip() in ['text/html', 'text/xml', 'application/xml']: #HTML data
+            try:
+        	root = BeautifulSoup(content)
+            except (Exception, UnicodeDecodeError) as e:
+                print e
+                return
 
-			except (Exception, UnicodeDecodeError) as e:
-				print e
-				return
-
-			for script in root(["script", "style"]):
-    			script.extract()    #extract these unnecessary tags
-
-    		text = root.get_text()
-
-			# break into lines and remove leading and trailing space on each
-			lines = (line.strip() for line in text.splitlines())
-			# break multi-headlines into a line each
-			chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-			# drop blank lines
-			text = '\n'.join(chunk for chunk in chunks if chunk)
-
-			print(text)
-
-
-			#If no exception occured:
-			tokens = tokenizeText(text)
-			fancyTokens = tokenizeHTML(root)
-
-		elif type_of_content.strip() in ['text/richtext', 'text/plain', 'text/csv', 'text/tab-separated-values']: #Plain text 
-			tokens = tokenizeText(content)
-
-		else:
-			f.close()
-			return
+            for script in root(["script", "style"]):
+    		script.extract()    #extract these unnecessary tags
+    	    text = root.get_text()
+            # break into lines and remove leading and trailing space on each
+            lines = (line.strip() for line in text.splitlines())
+	    # break multi-headlines into a line each
+	    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+	    # drop blank lines
+	    text = '\n'.join(chunk for chunk in chunks if chunk)
+	    #print(text)
+	    #If no exception occured:
+	    tokens = tokenizeText(text)
+	    fancyTokens = tokenizeHTML(root)
+	elif type_of_content.strip() in ['text/richtext', 'text/plain', 'text/csv', 'text/tab-separated-values']: #Plain text
+            tokens = tokenizeText(content)
+	else:
+    	    f.close()
+            return
 
     	docID = getDocID(file_name) #Returns document ID in the form 22/150 or 0/278
-		index_tokens(tokens, docID)
-	
-
+    	index_tokens(tokens, docID)
 	f.close()
 
 
+def stem_tokens(tokens, stemmer):
+
+    stemmed = []
+    for item in tokens:
+        try:
+            stemmed.append(stemmer.stem(item))
+        except UnicodeDecodeError:
+            pass
+    return stemmed
+    
 
 def getDocID(file_name):
 	text = file_name
 	pattern = "/"
 	pos = text.rfind(pattern, 0, text.rfind(pattern))
 	return text[pos + 1:]
+
 
 
 def tokenizeText(content):
@@ -137,7 +141,7 @@ def tokenizeText(content):
 		lines = [line.strip().lower() for line in lines]
 
 		for line in lines:
-			text = "".join([ch for ch in text if ch not in string.punctuation])
+			text = "".join([ch for ch in line if ch not in string.punctuation])
 			tokens = nltk.word_tokenize(text)
 			stems = stem_tokens(tokens, stemmer)
 			processed_tokens.extend(stems)
@@ -153,7 +157,6 @@ def tokenizeHTML(root):
 
             
      
-
 def Key_Indexer(content):
     
     '''
@@ -192,122 +195,200 @@ def Statistics():
 
 
 def create_Index():
-	file_name = "index_head"
-	try:
-    	os.remove(filename)
-	except OSError:
-    	pass
-	f = open(filename, 'a')
 
-	create_letter_index()
-
-	crawl_files(f)
+    create_letter_index()
+    crawl_files()
+    ret_val = mergeIndexes()
+    return ret_val
 
 
 
 def create_letter_index():
-	letters = string.ascii_uppercase
-	letter_file_map = map(lambda x: "index_" + x, list(letters))
+    letters = string.ascii_uppercase
+    letter_file_map = map(lambda x: "index_" + x, list(letters))
 
-	for name in letter_file_map:
-		try:
-    		os.remove(filename)
-		except OSError:
-    		pass
-		f = open(filename, 'a').close()
-
+    print "create_letter_index"
+    for name in letter_file_map:
+	try:
+            os.remove(name)
+	except OSError:
+            pass
+        f = open(name, 'a').close()
 	f = open("index_NUM", 'a').close()
 
 
 def open_letter_index():
-	global file_handle_list
-	global file_handle_map
-
-	letters = string.ascii_uppercase
-	letter_file_map = map(lambda x: "index_" + x, list(letters))
-
-	
-	for name in letter_file_map:
-		file_handle = open(name, 'a')
-		#file_handle_list.append(file_handle)
-		file_handle_map[name[-1]] = file_handle
-
+    global file_handle_list
+    global file_handle_map
+    print "open_index"
+    letters = string.ascii_uppercase
+    letter_file_map = map(lambda x: "index_" + x, list(letters))
+    for name in letter_file_map:
+	file_handle = open(name, 'a')
+	#file_handle_list.append(file_handle)
+	file_handle_map[name[-1].lower()] = file_handle
 	# file_handle_list.append(open("index_NUM", 'a')) #Index File for numbers
 	file_handle_map["NUM"] = open("index_NUM", 'a')
 	file_handle_map["SYM"] = open("index_SYM", 'a')
 
 
 def close_letter_index():
-	global file_handle_list
+    global file_handle_list
+    print "close_index"
+    for handle_name in file_handle_map:
+	file_handle_map[handle_name].close()
 
-	for handle_name in file_handle_map:
-		file_handle_map[handle_name].close()
+
+def read_letter_index():
+    read_file_map = dict()
+    letters = string.ascii_uppercase
+    letter_file_map = map(lambda x: "index_" + x, list(letters))
+    for name in letter_file_map:
+    	file_handle = open(name, 'r')
+	#file_handle_list.append(file_handle)
+	read_file_map[name[-1].lower()] = file_handle
+	# file_handle_list.append(open("index_NUM", 'a')) #Index File for numbers
+    read_file_map["NUM"] = open("index_NUM", 'r')
+    read_file_map["SYM"] = open("index_SYM", 'r')
+
+    return read_file_map
+
+
+def close_files(file_handles):
+
+    for handle_name in file_handles:
+	file_handle_map[handle_name].close()
+
 
 
 
 def index_tokens(tokens, doc_ID):
-'''Index Token list by adding them to the dictionary. Also, write the tokens to file when each set of 5000 files are processed.'''
-	global curr_file_count
-	global index_dict
-	global curr_url_count 
+    '''Index Token list by adding them to the dictionary. Also, write the tokens to file when each set of 5000 files are processed.'''
+    global curr_file_count
+    global index_dict
+    global curr_url_count 
 
-	curr_url_count += 1
+    print "index_tokens"
+    curr_url_count += 1
 
-	if curr_url_count % 5000 == 0:
-		#close curr_file by writing contents of the dict to the file and open new file
-		#add values to the dictionary
+    if curr_url_count % 5000 == 0:
+    	#close curr_file by writing contents of the dict to the file and open new file
+	#add values to the dictionary
 
-		curr_file_count += 1
-		fileName = "index_file_" + str(curr_file_count)
+	curr_file_count += 1
+	fileName = "index_file_" + str(curr_file_count)
+        print "write_file"
+        print(str(len(index_dict)))
+        raw_input("Enter to continue")
+	f = open(fileName, 'w')
+	# f.write(str(len(index_dict)) + '\n') #1st line of the file is the number of entries in the file
+	for word in sorted(index_dict): 
+            json.dump([word, len(word), index_dict[word]], f)
+            f.write("\n")
 
-		f = open(fileName, 'w')
-		# f.write(str(len(index_dict)) + '\n') #1st line of the file is the number of entries in the file
-		for word in sorted(index_dict): 
-			json.dump([word, len(word), index_dict[word]], f)
-			f.write("\n")
-
-		f.close()
-
-		index_dict = dict()
-
-
-	for token in tokens:
-		word_chain = index_dict.get(token, dict())
-		word_chain[doc_ID] = word_chain.get(doc_ID, 0) + 1
-
+        f.close()
+        index_dict = dict()
+    for token in tokens:
+	token = token.lower()
+	index_dict[token] = index_dict.get(token, dict())
+	word_chain = index_dict[token]
+	word_chain[doc_ID] = word_chain.get(doc_ID, 0) + 1
 
 def mergeIndexes():
-	global curr_file_count
-	global index_dict
-	global curr_url_count
+    global curr_file_count
+    global index_dict
+    global curr_url_count
+    global file_handle_map
 
-	#First write the remaining values in the index_dict to the last file
+    #First write the remaining values in the index_dict to the last file
 
-	if curr_url_count % 5000 != 0:	#Write only if its already not written
-		curr_file_count += 1
-		fileName = "index_file_" + str(curr_file_count)
-
-		f = open(fileName, 'w')
-		# f.write(str(len(index_dict)) + '\n') #1st line of the file is the number of entries in the file
-		for word in sorted(index_dict): 
-			json.dump([word, len(word), index_dict[word]], f)
-			f.write("\n")
-
-		f.close()
-
-	open_letter_index()
-
-	external_index_handles = list()
-	for i in range(1, curr_file_count + 1):	#open all the sorted index files
-		fileName = "index_file_" + str(i)
-		f = open(fileName, 'r')
-		external_index_handles.append(f)
-
+    if curr_url_count % 5000 != 0:	#Write only if its already not written
+    	curr_file_count += 1
+	fileName = "index_file_" + str(curr_file_count)
+	print "merge_index"
+    f = open(fileName, 'w')
+    # f.write(str(len(index_dict)) + '\n') #1st line of the file is the number of entries in the file
+    for word in sorted(index_dict): 
+	json.dump([word, len(word), index_dict[word]], f)
+	f.write("\n")
+    f.close()
+    open_letter_index()
+    external_index_handles = list()
+    for i in range(1, curr_file_count + 1):	#open all the sorted index files
+	fileName = "index_file_" + str(i)
+	f = open(fileName, 'r')
+	external_index_handles.append(f)
 	#Merge all the sorted index files into the alphabetical inverted index form
+	for handle in external_index_handles:
+            for line in handle:
+		start_letter = getLetter(line)
+		f_handle = file_handle_map[start_letter]
+		json.dump(line.strip(), f_handle)
+		f_handle.write("\n")	
 
-# 	for handle in external_index_handles:
-# 		json_line = 
-''' Still completing this '''
+    close_letter_index()
+
+    ret_val = sort_letter_indexes()	
+
+    return ret_val	
+
+
+
+def getLetter(json_line):
+    line = json.loads(json_line)
+    if line[0].strip():
+    	letter = line[0][0]
+	letter = letter.lower()
+	if letter.isdigit():
+            letter = "NUM"
+
+	elif letter in "~`!@#$%^&*()_-+={}[]:>;',</?*-+":
+            letter = "SYM"
+
+    return letter
+
+
+def sort_letter_indexes():
+    global file_handle_map
+	
+    read_map = read_letter_index()
+
+    for letter in read_map:
+	handle = read_map[letter]
+	lines = handle.readlines()
+	lines = [line.strip() for line in lines if line.strip() != ""]
+	wordDict = dict()
+	for line in lines:
+            json_str = json.loads(line)
+            key = json_str[0]
+            value = json_str[1]
+            key = key.lower()
+            val_dict = wordDict.get(key, dict())
+            val_dict.update(value)
+            wordDict[key] = val_dict
+
+    handle.close()
+
+    fileName = "index_" + letter.strip()
+    f = open(fileName, "w")
+    for word in sorted(wordDict):
+	json.dump([word, wordDict[word]], f)
+	f.write("\n")
+    f.close()
+
+
+if __name__ == '__main__':
+	create_Index()
+
+
+
+
+
+
+
+
+
+	
 
 
 
